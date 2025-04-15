@@ -25,6 +25,7 @@ services:
       - POSTGRESQL_REPLICATION_PASSWORD=repl_pass
     volumes:
       - pg_primary_data:/bitnami/postgresql
+      - ./config/postgresql/postgresql.conf:/opt/bitnami/postgresql/postgresql.conf
     networks:
       - pgnet
 
@@ -43,6 +44,7 @@ services:
       - POSTGRESQL_REPLICATION_PASSWORD=repl_pass
     volumes:
       - pg_replica_data:/bitnami/postgresql
+      - ./config/postgresql/postgresql.conf:/opt/bitnami/postgresql/postgresql.conf
     networks:
       - pgnet
 
@@ -64,6 +66,8 @@ services:
       - PGPOOL_ENABLE_LOG_CONNECTIONS=yes
       - PGPOOL_ENABLE_LOG_HOSTNAME=yes
       - PGPOOL_ENABLE_POOL_HBA=no
+    volumes:
+      - ./config/postgresql/pgpool.conf:/opt/bitnami/pgpool/conf/pgpool.conf
     networks:
       - pgnet
 
