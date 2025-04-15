@@ -71,13 +71,71 @@ services:
     networks:
       - pgnet
 
+  opensearch-node1:
+    image: opensearchproject/opensearch:2.18.0
+    container_name: opensearch-node1
+    environment:
+      - cluster.name=bitbucket-opensearch
+      - node.name=opensearch-node1
+      - discovery.seed_hosts=opensearch-node2,opensearch-node3
+      - cluster.initial_master_nodes=opensearch-node1,opensearch-node2,opensearch-node3
+      - bootstrap.memory_lock=false
+      - "OPENSEARCH_JAVA_OPTS=-Xms2g -Xmx2g"
+      - plugins.security.disabled=true
+      - OPENSEARCH_INITIAL_ADMIN_PASSWORD=@1n5A!AWE@
+    volumes:
+      - opensearch-node1-data:/usr/share/opensearch/data
+    ports:
+      - "9200:9200"
+    networks:
+      - opensearchnet
+
+  opensearch-node2:
+    image: opensearchproject/opensearch:2.18.0
+    container_name: opensearch-node2
+    environment:
+      - cluster.name=bitbucket-opensearch
+      - node.name=opensearch-node2
+      - discovery.seed_hosts=opensearch-node1,opensearch-node3
+      - cluster.initial_master_nodes=opensearch-node1,opensearch-node2,opensearch-node3
+      - bootstrap.memory_lock=false
+      - "OPENSEARCH_JAVA_OPTS=-Xms2g -Xmx2g"
+      - plugins.security.disabled=true
+      - OPENSEARCH_INITIAL_ADMIN_PASSWORD=@1n5A!AWE@
+    volumes:
+      - opensearch-node2-data:/usr/share/opensearch/data
+    networks:
+      - opensearchnet
+
+  opensearch-node3:
+    image: opensearchproject/opensearch:2.18.0
+    container_name: opensearch-node3
+    environment:
+      - cluster.name=bitbucket-opensearch
+      - node.name=opensearch-node3
+      - discovery.seed_hosts=opensearch-node1,opensearch-node2
+      - cluster.initial_master_nodes=opensearch-node1,opensearch-node2,opensearch-node3
+      - bootstrap.memory_lock=false
+      - "OPENSEARCH_JAVA_OPTS=-Xms2g -Xmx2g"
+      - plugins.security.disabled=true
+      - OPENSEARCH_INITIAL_ADMIN_PASSWORD=@1n5A!AWE@
+    volumes:
+      - opensearch-node3-data:/usr/share/opensearch/data
+    networks:
+      - opensearchnet
+
 volumes:
   nfsdata:
   pg_primary_data:
   pg_replica_data:
+  opensearch-node1-data:
+  opensearch-node2-data:
+  opensearch-node3-data:
 
 networks:
   nfsnet:
     driver: bridge
   pgnet:
+    driver: bridge
+  opensearchnet:
     driver: bridge
