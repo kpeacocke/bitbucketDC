@@ -1,17 +1,20 @@
 services:
   nfs-server:
-    image: itsthenetwork/nfs-server-alpine:latest
+    image: lihungte96/docker-nfs4:latest
     container_name: nfs-server
     restart: unless-stopped
-    environment:
-      - SHARED_DIRECTORY=/exports
     volumes:
-      - ./exports:/exports
+      - ./config/nfs/exports:/etc/exports
+      - nfsdata:/mnt
     networks:
       - nfsnet
-    ports:
-      - "2049:2049"  # NFSv4
+    expose:
+      - "2049/tcp"
+      - "2049/udp"
+    privileged: true
 
+volumes:
+  nfsdata:
 networks:
   nfsnet:
     driver: bridge
