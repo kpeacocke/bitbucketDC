@@ -1,4 +1,18 @@
 services:
+  haproxy:
+    image: haproxy:2.9
+    container_name: haproxy
+    restart: unless-stopped
+    ports:
+      - "80:80"    # HTTP
+      - "443:443"  # Placeholder for future HTTPS
+    volumes:
+      - ./config/haproxy/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+    depends_on:
+      - bitbucket1
+      - bitbucket2
+    networks:
+      - pgnet
   bitbucket1:
     image: atlassian/bitbucket:9
     container_name: bitbucket1
@@ -15,9 +29,9 @@ services:
       - SEARCH_ENABLED=false
       - JVM_MINIMUM_MEMORY=2g
       - JVM_MAXIMUM_MEMORY=4g
-    ports:
-      - "7990:7990"   # Web
-      - "7999:7999"   # SSH
+    expose:
+      - "7990"   # Web
+      - "7999"   # SSH
     networks:
       - pgnet         # To reach pgpool
       - opensearchnet # To reach OpenSearch
