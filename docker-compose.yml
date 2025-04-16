@@ -19,9 +19,12 @@ services:
     container_name: bitbucket1
     restart: unless-stopped
     depends_on:
-      - pgpool
-      - opensearch-node1
-      - nfs-server
+      pgpool:
+        condition: service_healthy
+      opensearch-node1:
+        condition: service_healthy
+      nfs-server:
+        condition: service_healthy
     environment:
       - ATL_JDBC_URL=jdbc:postgresql://pgpool:5432/bitbucket
       - ATL_JDBC_USER=bn_bitbucket
@@ -111,6 +114,11 @@ services:
     volumes:
       - pg_primary_data:/bitnami/postgresql
       - ./config/postgresql/postgresql.conf:/opt/bitnami/postgresql/postgresql.conf
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bn_bitbucket -d bitbucket"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     networks:
       - pgnet
   postgres_replica:
@@ -129,12 +137,23 @@ services:
     volumes:
       - pg_replica_data:/bitnami/postgresql
       - ./config/postgresql/postgresql.conf:/opt/bitnami/postgresql/postgresql.conf
+      - ./config/postgresql/check_replica.sh:/check_replica.sh
+    healthcheck:
+      test: ["CMD-SHELL", "/check_replica.sh"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     networks:
       - pgnet
   pgpool:
     image: bitnami/pgpool:4
     container_name: pgpool
     restart: unless-stopped
+    depends_on:
+      postgres_primary:
+        condition: service_healthy
+      postgres_replica:
+        condition: service_healthy
     ports:
       - "5432:5432"
     environment:
@@ -147,6 +166,12 @@ services:
       - PGPOOL_POSTGRES_PASSWORD=bitbucketpass
     volumes:
       - ./config/postgresql/pgpool.conf:/opt/bitnami/pgpool/conf/pgpool.conf
+      - ./config/postgresql/pgpool-health.sh:/pgpool-health.sh
+    healthcheck:
+      test: ["CMD-SHELL", "/pgpool-health.sh"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
     networks:
       - pgnet
   opensearch-node1:
