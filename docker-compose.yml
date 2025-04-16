@@ -12,6 +12,7 @@ services:
       - bitbucket1
       - bitbucket2
     networks:
+      - proxy
       - pgnet
   bitbucket1:
     image: atlassian/bitbucket:9
@@ -207,9 +208,14 @@ volumes:
   opensearch-node3-data:
   bitbucket_shared:
 networks:
+  proxy:
+    driver: bridge
   nfsnet:
     driver: bridge
+    internal: true
   pgnet:
     driver: bridge
+    internal: true
   opensearchnet:
     driver: bridge
+    internal: true
