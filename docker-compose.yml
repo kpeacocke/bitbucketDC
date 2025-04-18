@@ -9,13 +9,24 @@ services:
     volumes:
       - ./config/haproxy/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
     depends_on:
-      - bitbucket1
-      - bitbucket2
+      bitbucket1:
+        condition: service_healthy
+      bitbucket2:
+        condition: service_healthy
     networks:
       - proxy
       - pgnet
   bitbucket1:
-    image: atlassian/bitbucket:9
+    build:
+      context: .
+      dockerfile_inline: |
+        FROM atlassian/bitbucket:9
+        RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y nfs-common && \
+            rm /opt/atlassian/bitbucket/app/WEB-INF/lib/mssql-jdbc-*.jar \
+            /opt/atlassian/bitbucket/app/WEB-INF/lib/postgresql-*.jar && \
+            wget https://jdbc.postgresql.org/download/postgresql-42.7.5.jar -O /opt/atlassian/bitbucket/app/WEB-INF/lib/postgresql-42.7.5.jar
+        COPY config/bitbucket/init-nfs.sh /init-nfs.sh
+        ENTRYPOINT ["/init-nfs.sh"]
     container_name: bitbucket1
     restart: unless-stopped
     depends_on:
@@ -23,12 +34,32 @@ services:
         condition: service_healthy
       opensearch-node1:
         condition: service_healthy
+      opensearch-node2:
+        condition: service_healthy
+      opensearch-node3:
+        condition: service_healthy
       nfs-server:
         condition: service_healthy
     environment:
-      - ATL_JDBC_URL=jdbc:postgresql://pgpool:5432/bitbucket
-      - ATL_JDBC_USER=bn_bitbucket
-      - ATL_JDBC_PASSWORD=bitbucketpass
+      - CLUSTER_NODE_ID=bitbucket1
+      - setup_displayName=ambitiousBucket
+      - setup_baseUrl=http://localhost
+      - setup_license=AAABjQ0ODAoPeNp9UU1vozAUvPtXIO2le6A1UJYmkqUSYNtEQNpAklbqxWFfAxswyDZp019fE4j6odUePZ6ZN/Pej7QFzW24ZtgadsaWNb40NM9PNRObNvI4UFnUzKcSSIfo+FI3bOSDyHjRdF9kUshNm+1AameKRjUPmAT+82msBXtatkc9imihUEZZBsFrU/DDJ0e7cxSSivw8kZQrMXmmpQAUFhkw8V8BzWSxByJ5C6js6SvgostloqTdfMQ8Uj4S9e8531JWiB5hbVkir2ZSmQYqcEl2vAGa1arc9bZSwHlWV6cxt2o8iTzs/Z4c0rdtOYvyi50T1NXiJWHrP/WarpIbN1+6fx/jCI9GSR6CeGFN3KwccGcLPJoFT2SoEbfVBvj8eSlUeKIbp+pTn4RTPwliPTTxCDu2Yw2KgZAeGohpBcSbR1Gw8KZuOBC6W/Sn6KsmwPfAleHETu/1OxVOv1o/OHpgzpZoB4fT2oxfGDv4yrIMdNfyLKcCvl9/2NFx7j9XpAKTr6HfASnEy+8wLAIUWCKwlJmqNekbMDZPKDmYAAL1P9wCFFqWt1QgJ1jmmJ9+DTuduWZpGSY6X02j7
+      - setup_sysadmin_username=admin
+      - setup_sysadmin_password=admin
+      - setup_sysadmin_displayName=admin
+      - setup_sysadmin_emailAddress=no-reply@localhost
+      - hazelcast_network_multicast=false
+      - hazelcast_group_name=your-bitbucket-cluster
+      - hazelcast_group_password=your-bitbucket-cluster
+      - hazelcast_network_join_tcpip_enabled=true
+      - hazelcast_network_join_multicast_enabled=false
+      - hazelcast_network_join_tcpip_members=bitbucket1,bitbucket2
+      - jdbc_driver=org.postgresql.Driver
+      - jdbc_url=jdbc:postgresql://pgpool:5432/bitbucket?targetServerType=primary
+      - jdbc_user=bn_bitbucket
+      - jdbc_password=bitbucketpass
+      - analytics.aws.enabled=false
       - PLUGIN_SEARCH_ELASTICSEARCH_BASEURL=http://opensearch-node1:9200
       - SEARCH_ENABLED=false
       - JVM_MINIMUM_MEMORY=2g
@@ -36,55 +67,62 @@ services:
     expose:
       - "7990"   # Web
       - "7999"   # SSH
+    privileged: true
+    cap_add:
+      - SYS_ADMIN
+    healthcheck:
+      test: ["CMD", "sh", "-c", "curl -sf http://localhost:7990/status | grep -q '\"state\":\"RUNNING\"'"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 30s
     networks:
       - pgnet         # To reach pgpool
       - opensearchnet # To reach OpenSearch
       - nfsnet        # To reach NFS
-    command: >
-      sh -c "
-        echo 'Waiting for NFS server...';
-        apt-get update && apt-get install -y nfs-common;
-        mkdir -p /var/atlassian/application-data/bitbucket/shared;
-        chown -R bitbucket:bitbucket /var/atlassian/application-data/bitbucket/shared;
-        while ! mount -t nfs4 -o vers=4.1,rsize=1048576,wsize=1048576,timeo=600,retrans=2
-        nfs-server:/mnt/bitbucket-shared /var/atlassian/application-data/bitbucket/shared; do
-          echo 'Retrying mount...';
-          sleep 3;
-        done;
-        echo 'Mounted NFS successfully.';
-        exec /entrypoint.py"
   bitbucket2:
-    image: atlassian/bitbucket:9
+    build:
+      context: .
+      dockerfile_inline: |
+        FROM atlassian/bitbucket:9
+        RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y nfs-common && \
+            rm /opt/atlassian/bitbucket/app/WEB-INF/lib/mssql-jdbc-*.jar \
+            /opt/atlassian/bitbucket/app/WEB-INF/lib/postgresql-*.jar && \
+            wget https://jdbc.postgresql.org/download/postgresql-42.7.5.jar -O /opt/atlassian/bitbucket/app/WEB-INF/lib/postgresql-42.7.5.jar
+        COPY config/bitbucket/init-nfs.sh /init-nfs.sh
+        ENTRYPOINT ["/init-nfs.sh"]
     container_name: bitbucket2
     restart: unless-stopped
+    depends_on:
+      bitbucket1:
+        condition: service_healthy
     environment:
-      - ATL_JDBC_URL=jdbc:postgresql://pgpool:5432/bitbucket
-      - ATL_JDBC_USER=bn_bitbucket
-      - ATL_JDBC_PASSWORD=bitbucketpass
-      - PLUGIN_SEARCH_ELASTICSEARCH_BASEURL=http://opensearch-node1:9200
+      - hazelcast_network_multicast=false
+      - hazelcast_group_name=your-bitbucket-cluster
+      - hazelcast_group_password=your-bitbucket-cluster
+      - hazelcast_network_join_tcpip_enabled=true
+      - hazelcast_network_join_multicast_enabled=false
+      - hazelcast_network_join_tcpip_members=bitbucket1,bitbucket2
+      - CLUSTER_NODE_ID=bitbucket2
       - SEARCH_ENABLED=false
       - JVM_MINIMUM_MEMORY=2g
       - JVM_MAXIMUM_MEMORY=4g
     expose:
       - "7990"   # Web
       - "7999"   # SSH
+    privileged: true
+    cap_add:
+      - SYS_ADMIN
+    healthcheck:
+      test: ["CMD", "sh", "-c", "curl -sf http://localhost:7990/status | grep -q '\"state\":\"RUNNING\"'"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
     networks:
       - pgnet         # To reach pgpool
       - opensearchnet # To reach OpenSearch
       - nfsnet        # To reach NFS
-    command: >
-      sh -c "
-        echo 'Waiting for NFS server...';
-        apt-get update && apt-get install -y nfs-common;
-        mkdir -p /var/atlassian/application-data/bitbucket/shared;
-        chown -R bitbucket:bitbucket /var/atlassian/application-data/bitbucket/shared;
-        while ! mount -t nfs4 -o vers=4.1,rsize=1048576,wsize=1048576,timeo=600,retrans=2
-        nfs-server:/mnt/bitbucket-shared /var/atlassian/application-data/bitbucket/shared; do
-          echo 'Retrying mount...';
-          sleep 3;
-        done;
-        echo 'Mounted NFS successfully.';
-        exec /entrypoint.py"
   nfs-server:
     image: lihungte96/docker-nfs4:latest
     container_name: nfs-server
@@ -93,6 +131,11 @@ services:
       - ./config/nfs/exports:/etc/exports
       - nfsdata:/mnt
       - ./config/nfs/init-nfs.sh:/init-nfs.sh
+    healthcheck:
+      test: ["CMD-SHELL", "exportfs -v | grep -q '/mnt/bitbucket-shared'"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
     entrypoint: ["/init-nfs.sh"]
     networks:
       - nfsnet
@@ -137,9 +180,11 @@ services:
     volumes:
       - pg_replica_data:/bitnami/postgresql
       - ./config/postgresql/postgresql.conf:/opt/bitnami/postgresql/postgresql.conf
-      - ./config/postgresql/check_replica.sh:/check_replica.sh
     healthcheck:
-      test: ["CMD-SHELL", "/check_replica.sh"]
+      test: [
+        "CMD-SHELL", 
+        "PGPASSWORD=bitbucketpass psql -U bn_bitbucket -d bitbucket -h localhost -tAc 'SELECT pg_is_in_recovery()' | grep -q t"
+        ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -166,9 +211,11 @@ services:
       - PGPOOL_POSTGRES_PASSWORD=bitbucketpass
     volumes:
       - ./config/postgresql/pgpool.conf:/opt/bitnami/pgpool/conf/pgpool.conf
-      - ./config/postgresql/pgpool-health.sh:/pgpool-health.sh
     healthcheck:
-      test: ["CMD-SHELL", "/pgpool-health.sh"]
+      test: [
+        "CMD-SHELL",
+        "psql -h localhost -U bn_bitbucket -d bitbucket -c 'SELECT 1;' > /dev/null && psql -h localhost -U bn_bitbucket -d bitbucket -c 'SHOW pool_nodes;' > /dev/null"
+      ]
       interval: 10s
       timeout: 5s
       retries: 3
@@ -177,6 +224,7 @@ services:
   opensearch-node1:
     image: opensearchproject/opensearch:2.18.0
     container_name: opensearch-node1
+    restart: unless-stopped
     environment:
       - cluster.name=bitbucket-opensearch
       - node.name=opensearch-node1
@@ -188,6 +236,11 @@ services:
       - OPENSEARCH_INITIAL_ADMIN_PASSWORD=@1n5A!AWE@
     volumes:
       - opensearch-node1-data:/usr/share/opensearch/data
+    healthcheck:
+      test: "curl -s http://localhost:9200/_cluster/health | grep -q '\"status\":\"yellow\"\\|\"status\":\"green\"'"
+      interval: 10s
+      timeout: 5s
+      retries: 3
     ports:
       - "9200:9200"
     networks:
@@ -195,6 +248,7 @@ services:
   opensearch-node2:
     image: opensearchproject/opensearch:2.18.0
     container_name: opensearch-node2
+    restart: unless-stopped
     environment:
       - cluster.name=bitbucket-opensearch
       - node.name=opensearch-node2
@@ -206,11 +260,17 @@ services:
       - OPENSEARCH_INITIAL_ADMIN_PASSWORD=@1n5A!AWE@
     volumes:
       - opensearch-node2-data:/usr/share/opensearch/data
+    healthcheck:
+      test: "curl -s http://localhost:9200/_cluster/health | grep -q '\"status\":\"yellow\"\\|\"status\":\"green\"'"
+      interval: 10s
+      timeout: 5s
+      retries: 3
     networks:
       - opensearchnet
   opensearch-node3:
     image: opensearchproject/opensearch:2.18.0
     container_name: opensearch-node3
+    restart: unless-stopped
     environment:
       - cluster.name=bitbucket-opensearch
       - node.name=opensearch-node3
@@ -222,6 +282,11 @@ services:
       - OPENSEARCH_INITIAL_ADMIN_PASSWORD=@1n5A!AWE@
     volumes:
       - opensearch-node3-data:/usr/share/opensearch/data
+    healthcheck:
+      test: "curl -s http://localhost:9200/_cluster/health | grep -q '\"status\":\"yellow\"\\|\"status\":\"green\"'"
+      interval: 10s
+      timeout: 5s
+      retries: 3
     networks:
       - opensearchnet
 volumes:
@@ -231,7 +296,6 @@ volumes:
   opensearch-node1-data:
   opensearch-node2-data:
   opensearch-node3-data:
-  bitbucket_shared:
 networks:
   proxy:
     driver: bridge
