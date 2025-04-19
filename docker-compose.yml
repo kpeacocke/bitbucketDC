@@ -28,7 +28,8 @@ services:
         COPY config/bitbucket/init-nfs.sh /init-nfs.sh
         ENTRYPOINT ["/init-nfs.sh"]
     container_name: bitbucket1
-    restart: unless-stopped
+    restart: 
+      on-failure:5
     depends_on:
       pgpool:
         condition: service_healthy
@@ -41,7 +42,6 @@ services:
       nfs-server:
         condition: service_healthy
     environment:
-      - CLUSTER_NODE_ID=bitbucket1
       - setup_displayName=ambitiousBucket
       - setup_baseUrl=http://localhost
       - setup_license=AAABjQ0ODAoPeNp9UU1vozAUvPtXIO2le6A1UJYmkqUSYNtEQNpAklbqxWFfAxswyDZp019fE4j6odUePZ6ZN/Pej7QFzW24ZtgadsaWNb40NM9PNRObNvI4UFnUzKcSSIfo+FI3bOSDyHjRdF9kUshNm+1AameKRjUPmAT+82msBXtatkc9imihUEZZBsFrU/DDJ0e7cxSSivw8kZQrMXmmpQAUFhkw8V8BzWSxByJ5C6js6SvgostloqTdfMQ8Uj4S9e8531JWiB5hbVkir2ZSmQYqcEl2vAGa1arc9bZSwHlWV6cxt2o8iTzs/Z4c0rdtOYvyi50T1NXiJWHrP/WarpIbN1+6fx/jCI9GSR6CeGFN3KwccGcLPJoFT2SoEbfVBvj8eSlUeKIbp+pTn4RTPwliPTTxCDu2Yw2KgZAeGohpBcSbR1Gw8KZuOBC6W/Sn6KsmwPfAleHETu/1OxVOv1o/OHpgzpZoB4fT2oxfGDv4yrIMdNfyLKcCvl9/2NFx7j9XpAKTr6HfASnEy+8wLAIUWCKwlJmqNekbMDZPKDmYAAL1P9wCFFqWt1QgJ1jmmJ9+DTuduWZpGSY6X02j7
@@ -50,20 +50,20 @@ services:
       - setup_sysadmin_displayName=admin
       - setup_sysadmin_emailAddress=no-reply@localhost
       - hazelcast_network_multicast=false
-      - hazelcast_group_name=your-bitbucket-cluster
-      - hazelcast_group_password=your-bitbucket-cluster
-      - hazelcast_network_join_tcpip_enabled=true
-      - hazelcast_network_join_multicast_enabled=false
-      - hazelcast_network_join_tcpip_members=bitbucket1,bitbucket2
+      - hazelcast_group_name=bitbucket-cluster
+      - hazelcast_group_password=bitbucket
+      - hazelcast_network_tcpip=true
+      - hazelcast_network_tcpip_members=bitbucket-app1:5701,bitbucket-app2:5701
       - jdbc_driver=org.postgresql.Driver
-      - jdbc_url=jdbc:postgresql://pgpool:5432/bitbucket?targetServerType=primary
+      - jdbc_url=jdbc:postgresql://pgpool:5432/bitbucket?targetServerType=preferPrimary
       - jdbc_user=bn_bitbucket
       - jdbc_password=bitbucketpass
-      - analytics.aws.enabled=false
-      - PLUGIN_SEARCH_ELASTICSEARCH_BASEURL=http://opensearch-node1:9200
+      - PLUGIN_SEARCH_CONFIG_BASEURL=http://opensearch-node1:9200
       - SEARCH_ENABLED=false
       - JVM_MINIMUM_MEMORY=2g
       - JVM_MAXIMUM_MEMORY=4g
+      - BITBUCKET_CLUSTER_ENABLED=true
+      - analytics_aws_enabled=false
     expose:
       - "7990"   # Web
       - "7999"   # SSH
@@ -74,12 +74,15 @@ services:
       test: ["CMD", "sh", "-c", "curl -sf http://localhost:7990/status | grep -q '\"state\":\"RUNNING\"'"]
       interval: 10s
       timeout: 5s
-      retries: 15
+      retries: 25
       start_period: 30s
     networks:
-      - pgnet         # To reach pgpool
-      - opensearchnet # To reach OpenSearch
-      - nfsnet        # To reach NFS
+      pgnet:         # To reach pgpool
+      opensearchnet: # To reach OpenSearch
+      nfsnet:       # To reach NFS
+      app:
+        aliases:
+          - bitbucket-app1
   bitbucket2:
     build:
       context: .
@@ -92,21 +95,28 @@ services:
         COPY config/bitbucket/init-nfs.sh /init-nfs.sh
         ENTRYPOINT ["/init-nfs.sh"]
     container_name: bitbucket2
-    restart: unless-stopped
+    restart: 
+      on-failure:5
     depends_on:
       bitbucket1:
         condition: service_healthy
     environment:
       - hazelcast_network_multicast=false
-      - hazelcast_group_name=your-bitbucket-cluster
-      - hazelcast_group_password=your-bitbucket-cluster
-      - hazelcast_network_join_tcpip_enabled=true
-      - hazelcast_network_join_multicast_enabled=false
-      - hazelcast_network_join_tcpip_members=bitbucket1,bitbucket2
-      - CLUSTER_NODE_ID=bitbucket2
+      - hazelcast_group_name=bitbucket-cluster
+      - hazelcast_group_password=bitbucket
+      - hazelcast_network_tcpip=true
+      - hazelcast_network_tcpip_members=bitbucket-app1:5701,bitbucket-app2:5701
+      - hazelcast_port=5701
       - SEARCH_ENABLED=false
       - JVM_MINIMUM_MEMORY=2g
       - JVM_MAXIMUM_MEMORY=4g
+      - jdbc_driver=org.postgresql.Driver
+      - jdbc_url=jdbc:postgresql://pgpool:5432/bitbucket?targetServerType=preferPrimary
+      - jdbc_user=bn_bitbucket
+      - jdbc_password=bitbucketpass
+      - PLUGIN_SEARCH_CONFIG_BASEURL=http://opensearch-node1:9200 
+      - BITBUCKET_CLUSTER_ENABLED=true
+      - analytics_aws_enabled=false
     expose:
       - "7990"   # Web
       - "7999"   # SSH
@@ -120,13 +130,15 @@ services:
       retries: 5
       start_period: 30s
     networks:
-      - pgnet         # To reach pgpool
-      - opensearchnet # To reach OpenSearch
-      - nfsnet        # To reach NFS
+      pgnet:         # To reach pgpool
+      opensearchnet: # To reach OpenSearch
+      nfsnet:       # To reach NFS
+      app:
+        aliases:
+          - bitbucket-app2
   nfs-server:
     image: lihungte96/docker-nfs4:latest
     container_name: nfs-server
-    restart: unless-stopped
     volumes:
       - ./config/nfs/exports:/etc/exports
       - nfsdata:/mnt
@@ -146,7 +158,6 @@ services:
   postgres_primary:
     image: bitnami/postgresql:17
     container_name: postgres_primary
-    restart: unless-stopped
     environment:
       - POSTGRESQL_REPLICATION_MODE=master
       - POSTGRESQL_USERNAME=bn_bitbucket
@@ -156,7 +167,6 @@ services:
       - POSTGRESQL_REPLICATION_PASSWORD=repl_pass
     volumes:
       - pg_primary_data:/bitnami/postgresql
-      - ./config/postgresql/postgresql.conf:/opt/bitnami/postgresql/postgresql.conf
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U bn_bitbucket -d bitbucket"]
       interval: 10s
@@ -167,7 +177,6 @@ services:
   postgres_replica:
     image: bitnami/postgresql:17
     container_name: postgres_replica
-    restart: unless-stopped
     depends_on:
       - postgres_primary
     environment:
@@ -179,7 +188,6 @@ services:
       - POSTGRESQL_REPLICATION_PASSWORD=repl_pass
     volumes:
       - pg_replica_data:/bitnami/postgresql
-      - ./config/postgresql/postgresql.conf:/opt/bitnami/postgresql/postgresql.conf
     healthcheck:
       test: [
         "CMD-SHELL", 
@@ -193,14 +201,13 @@ services:
   pgpool:
     image: bitnami/pgpool:4
     container_name: pgpool
-    restart: unless-stopped
     depends_on:
       postgres_primary:
         condition: service_healthy
       postgres_replica:
         condition: service_healthy
-    ports:
-      - "5432:5432"
+    expose:
+      - "5432"
     environment:
       - PGPOOL_ADMIN_USERNAME=pgpooladmin
       - PGPOOL_ADMIN_PASSWORD=supersecureadminpass
@@ -237,7 +244,7 @@ services:
     volumes:
       - opensearch-node1-data:/usr/share/opensearch/data
     healthcheck:
-      test: "curl -s http://localhost:9200/_cluster/health | grep -q '\"status\":\"yellow\"\\|\"status\":\"green\"'"
+      test: "curl -s http://localhost:9200/_cluster/health | grep -q '\"status\":\"green\"'"
       interval: 10s
       timeout: 5s
       retries: 3
@@ -306,5 +313,8 @@ networks:
     driver: bridge
     internal: true
   opensearchnet:
+    driver: bridge
+    internal: true
+  app:
     driver: bridge
     internal: true
